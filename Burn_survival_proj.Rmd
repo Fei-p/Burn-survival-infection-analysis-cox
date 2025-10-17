@@ -1,0 +1,1609 @@
+---
+title: "Survival and Infection Control in Burn Patients: A Cox Model Analysis"
+author: "Feini Pek"
+date: '12/10/2024 '
+output: 
+  html_document:
+    theme : journal
+    toc: true
+    toc_depth : 6
+    number_sections: no
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, results='hide', warning = FALSE, message = FALSE, include = FALSE}
+library(KMsurv)
+library(survival)
+library(ggplot2)
+library(gridExtra)
+library(wesanderson)
+library(DT)
+library(shiny)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(tibble)
+```
+
+```{r, include = FALSE}
+darjeeling_colors <- wes_palette("Darjeeling1", n = 5)
+```
+
+## 1. Introduction
+
+Burn injuries are among the most complex and severe types of trauma, with infection representing a major complication that significantly impacts patient outcomes. This project investigates the factors influencing the risk of infection in burn patients, particularly focusing on Staphylococcus aureus, a common and dangerous pathogen in burn wound infections. By exploring key predictors and their relationship with time to infection, this study seeks to provide actionable insights for improving infection control strategies in burn care.
+
+This report investigates the factors contributing to infection risk in burn patients, focusing on two primary treatment strategies: routine bathing versus total body cleansing with antimicrobial agents. Using data from 154 patients collected by Ichida et al. (1993), this study explores the role of treatment type, demographic characteristics, burn severity, and time-dependent interventions like surgical excision and prophylactic antibiotic treatment in predicting time to infection. Through stratified Cox proportional hazards modeling, the report aims to identify actionable predictors of infection risk and evaluate their implications for clinical management.
+
+The analysis revealed that timely surgical excision significantly reduces infection risk, while antimicrobial cleansing provides marginal benefits. Interestingly, race emerged as a significant predictor, with White patients showing a higher hazard for infection, though this finding may be influenced by dataset imbalances. Burn site and burn percent did not show significant direct effects but may interact with other variables in complex ways. These findings highlight the critical role of early interventions, the potential for treatment disparities, and the need for diverse datasets to validate results. By addressing these questions, this report provides insights into improving infection control practices and tailoring interventions for burn patients.
+
+## 2. Background of Study
+
+Burn injuries represent a significant global health burden, often resulting in severe complications such as infections, prolonged hospital stays, and increased mortality. Among these, infections remain a leading cause of morbidity, with Staphylococcus aureus being one of the most common pathogens responsible for burn wound infections. Effective infection control is therefore critical in improving patient outcomes and reducing the overall healthcare burden associated with burn injuries.
+
+Previous research has consistently emphasized the importance of early interventions in reducing infection risks. Timely surgical excision has been identified as a critical factor in preventing infections, as it removes necrotic tissue that serves as a breeding ground for bacteria. Additionally, studies have shown that burn severity, the percentage of total body surface area burned, and specific burn types significantly influence infection risk and survival outcomes. However, findings on infection control practices remain mixed, with limited evidence on the comparative effectiveness of routine bathing versus total body cleansing with antimicrobial agents. Moreover, the interaction between demographic factors, such as race and gender, and clinical outcomes has received less attention, highlighting a critical gap in the literature.
+
+This study addresses these gaps by utilizing a dataset derived from Ichida et al. (1993), which includes 154 patients with diverse burn severities, treatment histories, and demographic characteristics. The dataset evaluates two primary infection control strategies: routine bathing and antimicrobial cleansing, while also incorporating key time-dependent covariates such as time to surgical excision and prophylactic antibiotic treatment. By using stratified Cox proportional hazards modeling, the study examines how these factors influence the time to Staphylococcus aureus infection, the primary outcome of interest.
+
+This research is necessary because it builds on prior findings by providing a more nuanced analysis of infection risk, incorporating both time-independent and time-dependent variables, and stratifying by burn type. By addressing the gaps in the effectiveness of antimicrobial cleansing and the role of demographic and burn-specific characteristics, this study aims to provide actionable insights for optimizing infection control strategies and improving outcomes in burn care.
+
+## 3. Exploratory Data Analysis
+
+The burn dataset comprises 154 observations with no missing values, originating from a study investigating infection control in burn patients. The study compares the effects of routine bathing versus total body cleansing with an antimicrobial agent. Key variables in the dataset include:
+
+1. Categorical variables:
+
+- Treatment (Routine vs. Cleansing)
+- Gender (Male vs. Female)
+- Race (Nonwhite vs. White)
+- Burn Type (Chemical, Scald, Electric, Flame)
+- Burn site indicators (e.g., head, trunk, lower leg, respiratory tract)
+
+2. Continuous variables: Percent Burned (percentage of total body surface area burned)
+
+3. Survival outcomes: Time to infection (e.g., Staphylococcus aureus)
+
+To better understand the data, we will explore each type of variable in detail.
+
+### 3.1 Categorical Variable
+
+```{r, include = FALSE}
+data(burn)
+```
+
+```{r, include = FALSE}
+burn1 <- burn
+burn1 <- data.frame(burn1,Treatment=factor(burn1$Z1,
+  labels=c("Routine","Cleansing")))
+burn1 <- data.frame(burn1,Gender=factor(burn1$Z2,
+  labels=c("Male","Female")))
+burn1 <- data.frame(burn1,Race=factor(burn1$Z3,
+  labels=c("Nonwhite","White")))
+burn1 <- data.frame(burn1,PercentBurned=burn1$Z4)
+burn1 <- data.frame(burn1,SiteHead=factor(burn1$Z5,
+  labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteButtock=factor(burn1$Z6,
+  labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteTrunk=factor(burn1$Z7,
+  labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteUpperLeg=factor(burn1$Z8,
+  labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteLowerLeg=factor(burn1$Z9,
+  labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,SiteRespTract=factor(burn1$Z10,
+  labels=c("NotBurned","Burned")))
+burn1 <- data.frame(burn1,BurnType=factor(burn1$Z11,
+  labels=c("Chemical","Scald","Electric","Flame")))
+```
+
+```{r, echo = FALSE}
+# Data for the tables
+treatment_data <- data.frame(
+  Treatment = c("Routine", "Cleansing"),
+  Count = c(70, 84)
+)
+
+gender_data <- data.frame(
+  Gender = c("Male", "Female"),
+  Count = c(120, 34)
+)
+
+race_data <- data.frame(
+  Race = c("Nonwhite", "White"),
+  Count = c(19, 135)
+)
+
+burn_type_data <- data.frame(
+  Burn_Type = c("Chemical", "Scald", "Electric", "Flame"),
+  Count = c(9, 18, 11, 116)
+)
+
+# Create a shiny app to simulate paginated tables
+ui <- fluidPage(
+  tags$h3("Categorical Data Summary Tables", style = "font-size:18px; color:saddlebrown;"),
+  tabsetPanel(
+    tabPanel("Treatment", DTOutput("treatment_table")),
+    tabPanel("Gender", DTOutput("gender_table")),
+    tabPanel("Race", DTOutput("race_table")),
+    tabPanel("Burn Type", DTOutput("burn_type_table"))
+  )
+)
+
+server <- function(input, output) {
+  output$treatment_table <- renderDT({
+    datatable(
+      treatment_data, 
+      caption = "Treatment Type",
+      options = list(pageLength = 5) # Show 5 rows per page
+    )
+  })
+  
+  output$gender_table <- renderDT({
+    datatable(
+      gender_data, 
+      caption = "Gender Distribution",
+      options = list(pageLength = 5) # Show 5 rows per page
+    )
+  })
+  
+  output$race_table <- renderDT({
+    datatable(
+      race_data, 
+      caption = "Race Distribution",
+      options = list(pageLength = 5) # Show 5 rows per page
+    )
+  })
+  
+  output$burn_type_table <- renderDT({
+    datatable(
+      burn_type_data, 
+      caption = "Burn Type Distribution",
+      options = list(pageLength = 5) # Show 5 rows per page
+    )
+  })
+}
+
+# Run the app
+shinyApp(ui = ui, server = server)
+```
+
+```{r, echo = FALSE, fig.align = 'center', fig.height = 5, fig.width = 5}
+# Function to create pie chart for a given variable using the Darjeeling palette
+create_pie_chart <- function(data, variable, title, palette) {
+  unique_values <- length(unique(data[[variable]]))
+  ggplot(data, aes(x = "", fill = !!sym(variable))) +
+    geom_bar(width = 1, color = "white") +
+    coord_polar(theta = "y") +
+    geom_text(
+      aes(label = sprintf("%0.1f%%", 100 * after_stat(count) / sum(after_stat(count)))),
+      position = position_stack(vjust = 0.5),
+      stat = "count", size = 3.1
+    ) +
+    scale_fill_manual(values = wes_palette(n = unique_values, name = palette)) +
+    labs(title = title, fill = variable) +
+    theme_void() +
+    theme(legend.position = "right")
+}
+
+# Create individual pie charts using the Darjeeling palette
+p1 <- create_pie_chart(burn1, "Treatment", "Treatment Distribution", "Darjeeling1")
+p2 <- create_pie_chart(burn1, "Gender", "Gender Distribution", "Darjeeling1")
+p3 <- create_pie_chart(burn1, "Race", "Race Distribution", "Darjeeling1")
+p4 <- create_pie_chart(burn1, "BurnType", "Burn Type Distribution", "Darjeeling1")
+
+# Arrange them in a 2x2 grid
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+
+```
+
+The dataset includes several categorical variables that offer insights into the demographic and clinical characteristics of burn patients. The accompanying pie charts illustrate the distribution of Treatment, Gender, Race, and Burn Type.
+
+The primary variable of interest, Treatment, is evenly distributed, with 45.5% of patients undergoing routine bathing and 54.5% receiving total body cleansing with an antimicrobial agent. Gender distribution reveals a predominance of male patients (77.9%) compared to females (22.1%), highlighting potential gender differences in burn injury prevalence. Regarding Race, 87.7% of patients identify as White, while 12.3% identify as Nonwhite, suggesting that the findings may primarily reflect outcomes for White patients. For Burn Type, flame burns are the most common, comprising 75.3% of cases, followed by scald burns (11.7%), electric burns (7.1%), and chemical burns (5.8%).
+
+These distributions indicate that the treatment groups are relatively balanced, supporting a fair comparison of infection outcomes. However, the dataset's demographic skew, with a majority of male and White patients, as well as the high prevalence of flame burns, limits the generalizability of findings to other populations and burn types. This demographic and clinical context is essential for interpreting the results and assessing the effectiveness of the treatments under study.
+
+
+### 3.2 Continuous Variable
+
+Following the analysis of categorical variables, we turn our attention to the continuous variable, PercentBurned, which provides critical insights into the severity of burn injuries in the patient population.
+
+```{r, include = FALSE}
+sum_pb <- summary(burn1$PercentBurned)
+sd_pb <- sd(burn1$PercentBurned)
+```
+
+```{r, echo = FALSE}
+# Create a data frame for summary statistics
+summary_stats <- data.frame(
+  Statistic = c("Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum", "Standard Deviation"),
+  Value = c(2, 12.25, 20, 24.69, 30, 95, 19.54)
+)
+
+summary_stats %>%
+  kable("html", caption = "Summary Statistics for Percent Burned") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T, position = "center")
+```
+
+```{r, include = FALSE}
+darjeeling_colors <- wes_palette("Darjeeling1", n = 5, type = "discrete")
+```
+
+```{r, fig.align = "center", echo = FALSE, fig.height = 4, fig.width = 6}
+
+# Custom theme to remove background and set minimal gridlines
+custom_theme <- theme(
+  panel.background = element_blank(),  # No background
+  panel.grid.major = element_line(color = "lightgray"),  # Light gridlines
+  panel.grid.minor = element_blank(),  # No minor gridlines
+  plot.title = element_text(color = "saddlebrown", size = 13, face = "bold"),  
+  axis.title = element_text(size = 12),  # Axis title size
+  axis.text = element_text(size = 10)   # Axis text size
+)
+
+# Plot
+ggplot(burn1, aes(x = PercentBurned)) +
+  geom_histogram(binwidth = 5, fill = darjeeling_colors[4], color = "white") +
+  labs(
+    title = "Distribution of Percent Burned",
+    x = "Percent Burned",
+    y = "Frequency"
+  ) +
+  custom_theme
+
+```
+
+The PercentBurned variable represents the percentage of body surface area affected by burns, serving as a crucial measure of burn severity and its potential influence on survival and recovery outcomes.
+
+- Patients in the dataset experienced burns covering between 2% and 95% of their total body surface area, with an average of 24.69% and a standard deviation of 19.54%.
+- The interquartile range indicates that 50% of patients had burns affecting between 12.25% and 30% of their body surface area, with a median value of 20%.
+- A histogram of the data reveals that the majority of patients experienced burns affecting less than 40% of their body. However, a smaller subset of patients suffered more extensive burns, with coverage reaching up to 95%.
+
+These findings highlight the diverse range of burn severities within the patient population. The variability in burn coverage underscores the importance of considering this factor when analyzing survival outcomes and assessing treatment effectiveness. Understanding the distribution of burn severity helps lay the groundwork for tailoring clinical interventions and optimizing care strategies to meet the needs of patients with varying levels of injury.
+
+### 3.3 Survival Outcome Variable
+
+#### 3.3.1 Kaplan-Meier Curves For The Treated and Untreated Patients
+
+```{r, include = FALSE}
+survival <- Surv(time = burn1$T3, event = burn1$D3)
+KMcurves <- survfit(survival ~ Treatment, data = burn1)
+```
+
+```{r, fig.align = "center", echo = FALSE, fig.height = 4, fig.width = 6}
+# Generate the survival plot with Darjeeling1 colors
+plot(
+  survfit(survival ~ Treatment, data = burn1), 
+  col = darjeeling_colors, # Apply Darjeeling1 colors
+  lwd = 1.8, 
+  xlab = "Time (days)", 
+  ylab = "Survival"
+)
+title("Time to Infection for Routine Care and Total Body Cleansing", cex.main = 1.1, col.main = "saddlebrown")
+legend(
+  "topright", 
+  legend = c("Routine Care", "Total Body Cleansing"), 
+  col = darjeeling_colors, 
+  lwd = 1.8
+)
+```
+
+This Kaplan-Meier survival plot compares the time to infection for two groups of patients: those receiving Routine Care (red line) and those undergoing Total Body Cleansing (green line). The y-axis represents the survival probability (the proportion of patients who remain infection-free), while the x-axis represents time in days until infection or censoring.
+
+The red line (Routine Care) consistently shows a lower survival probability over time, indicating a higher risk of infection compared to the green line (Total Body Cleansing). The green line remains higher throughout, suggesting that Total Body Cleansing is associated with a longer infection-free period.
+
+In the first 20 days, the Routine Care group exhibits a sharp decline in survival, with many infections occurring early. In contrast, the Total Body Cleansing group demonstrates a more gradual decline, with fewer infections occurring during this period. By the end of the observation period, more patients in the Total Body Cleansing group remain infection-free compared to those in the Routine Care group. Specifically, the survival probability for Total Body Cleansing stays above 60%, whereas for Routine Care it drops below 50% after about 50 days.
+
+The Kaplan-Meier curves suggest that Total Body Cleansing potentially significantly reduces the risk of infection compared to Routine Care, delaying or preventing infections in burn patients. Additionally, the absence of substantial crossings between the two curves supports the assumption of proportional hazards for the treatment variable. Next, we will conduct a log-rank test to evaluate whether the observed differences between the survival curves are statistically significant.
+
+**Log-rank test**:
+
+The log-rank test is a statistical method used to compare survival distributions between two or more groups. It evaluates whether the observed differences in survival times (infection-free periods, in this case) are statistically significant. We have the following hypotheses:
+
+- $H_0 :$ The survival distributions (infection-free times) are the same for both treatment groups (Routine Care and Total Body Cleansing)
+- $H_a :$ The survival distributions are different between the two treatment groups
+
+```{r, include = FALSE}
+survdiff_result <- survdiff(formula = survival ~ Treatment, data = burn1)
+```
+
+```{r, echo = FALSE}
+# Extracting the results for the table
+summary_data <- data.frame(
+  Treatment = c("Routine", "Cleansing"),
+  N = c(70, 84),
+  Observed = c(28, 20),
+  Expected = c(21.4, 26.6),
+  `(O-E)^2/E` = c(2.07, 1.66),
+  `(O-E)^2/V` = c(3.79, 3.79)
+)
+
+# Displaying the table using kable for HTML output
+kable(summary_data, 
+      caption = "Survival Differences by Treatment Group", 
+      digits = 2, 
+      align = c("l", "r", "r", "r", "r", "r"))
+```
+
+
+We observe a Chi-squared value of 3.8 with a p-value of 0.05, indicating marginal statistical significance at the commonly used threshold of $\alpha = 0.05$. This suggests that the difference in infection-free survival between the two groups (Routine Care and Total Body Cleansing) is right at the boundary of statistical significance.
+
+While this result implies that Total Body Cleansing may have an advantage in reducing infection risk compared to Routine Care, the marginal nature of the p-value suggests caution in interpretation. Additional analyses or larger sample sizes may help confirm this finding and strengthen the evidence for the effectiveness of Total Body Cleansing.
+
+#### 3.3.2 Nelson-Aalen Cumulative Hazards
+
+```{r,include = FALSE }
+NAcurves <- survfit(survival ~ Treatment,type="fleming-harrington",data=burn1)
+```
+
+```{r, fig.align = 'center', echo = FALSE, fig.height = 4, fig.width = 6}
+#vector of time points
+timevec <- 1:97
+
+#first hazard (group 1)
+sf1 <- stepfun(NAcurves[1]$time,c(1,NAcurves[1]$surv))
+
+#second hazard (group 2)
+sf2 <- stepfun(NAcurves[2]$time,c(1,NAcurves[2]$surv))
+
+#now we can find the cumulative hazards
+cumhaz1 <- -log(sf1(timevec))
+cumhaz2 <- -log(sf2(timevec))
+
+# Cummulative Hazard 
+plot(timevec,cumhaz1,type="l", col = darjeeling_colors[2], ylab="Cummulative Hazard",xlab="Time", lwd = 1.8)
+lines(timevec,cumhaz2,type="l", col = darjeeling_colors[3], lwd = 1.8 )
+legend("bottomright",c("Routine", "Cleansing"),col=c(darjeeling_colors[2], darjeeling_colors[3]),lwd=2)
+title("NA Cumulative Hazard for Routine Care and Total Body Cleansing", cex.main = 1.1, col.main = "saddlebrown")
+```
+
+This plot displays the Nelson-Aalen cumulative hazard estimates for time to infection in the two treatment groups: Routine Care (green line) and Total Body Cleansing (yellow line). The y-axis represents the cumulative hazard, which quantifies the accumulated risk of infection over time, while the x-axis represents time (in days).
+
+The green line (Routine Care) exhibits a steeper and more consistent rise in cumulative hazard compared to the yellow line (Total Body Cleansing). This suggests that patients receiving Routine Care face a higher and more sustained risk of infection as time progresses. In contrast, the yellow line shows a much flatter trajectory, particularly after the initial 20–40 days, indicating that Total Body Cleansing reduces and slows the accumulation of infection risk over time.
+
+By the end of the 100-day observation period, the Routine Care group has a significantly higher cumulative hazard than the Total Body Cleansing group, underscoring the potential advantage of cleansing in reducing overall infection risk. Similar to the Kaplan-Meier survival curves, there is no noticeable crossing between the two lines, providing further support for the assumption of proportional hazards in the treatment effect.
+
+
+#### 3.3.3 Complimentary log-log survival vs. log time
+
+```{r, fig.align = 'center', echo = FALSE, fig.height = 4, fig.width = 6, warning = FALSE}
+plot(NAcurves,col=darjeeling_colors,lwd=1.8, fun = "cloglog")
+title("Complimentary Log-Log for Routine Care and Total Body Cleansing", cex.main = 1, col.main= "saddlebrown")
+legend("bottomright",c("Routine", "Cleansing"),col=darjeeling_colors,lwd=1.8)
+```
+
+This plot represents the complementary log-log survival curves for the two treatment groups: Routine Care (red line) and Total Body Cleansing (green line). It is a graphical tool used to assess whether the proportional hazards assumption holds in a Cox proportional hazards model. Each curve shows the complementary log-log transformation of survival probabilities over time for the respective treatment group.
+
+The proportional hazards assumption implies that the curves for different groups should be approximately parallel. Any substantial deviation from parallelism could indicate that the assumption does not hold for the covariate under comparison (Treatment). In this plot, the curves for Routine Care and Total Body Cleansing appear to be roughly parallel, particularly at later time points, suggesting that the proportional hazards assumption is likely valid for the treatment variable.
+
+Additionally, the red line (Routine Care) consistently lies above the green line (Total Body Cleansing), reflecting a higher cumulative hazard (or lower infection probability) for Routine Care compared to Total Body Cleansing. While these visual observations support the proportional hazards assumption, a formal test using Schoenfeld residuals, discussed in the following section, is necessary for confirmation.
+
+## 4. Model Fitting
+
+###  4.1 Time-Independent Cox Model
+
+#### 4.1.1 Model Construction
+
+```{r, include = FALSE}
+#if you have a categorical predictor it needs to be a factor to be used in the model
+burn.cox <- coxph(survival~factor(Treatment),data=burn1)
+
+#summary of coefficients
+summary_cox <- summary(burn.cox)
+```
+
+```{r, echo = FALSE}
+# Create a data frame for the coefficients and statistics
+cox_results <- data.frame(
+  Variable = "Treatment:Cleansing",
+  Coeff = summary_cox$coefficients[, "coef"],
+  "Exp(Coeff)" = summary_cox$coefficients[, "exp(coef)"],
+  "SE(Coeff)" = summary_cox$coefficients[, "se(coef)"],
+  Z = summary_cox$coefficients[, "z"],
+  p = summary_cox$coefficients[, "Pr(>|z|)"],
+  Lower_95 = summary_cox$conf.int[, "lower .95"],
+  Upper_95 = summary_cox$conf.int[, "upper .95"]
+)
+
+# Display the results in a table using kable and kableExtra
+cox_results %>%
+  kable("html", caption = "Cox Proportional Hazards Model Results for Treatment", digits = 3) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2:8, width = "2in") %>%
+  # add_header_above(c(" " = 1, "Cox Model Estimates" = 7)) %>%
+  row_spec(0, bold = TRUE)  # Make the header row bold
+```
+
+Model Fit Statistics:
+
+- Concordance = 0.566 (se = 0.039)
+- Likelihood ratio test = 3.73 on 1 df, p = 0.05
+- Wald test = 3.66 on 1 df, p = 0.06
+- Score (logrank) test = 3.76 on 1 df, p = 0.05
+
+This model provides an initial assessment of the treatment's impact. The hazard ratio (HR) for Total Body Cleansing compared to Routine Care was 0.57 (95% CI: 0.32–1.01), suggesting a 43% reduction in the hazard of infection associated with Total Body Cleansing. However, the result was only marginally significant (p=0.056), slightly above the conventional threshold ($\alpha$=0.05). The concordance statistic of 0.566 indicates modest predictive ability, just above random chance.
+
+The borderline significance observed in the likelihood ratio, Wald, and log-rank tests underscores the need for caution in interpreting the potential benefit of Total Body Cleansing. While the results indicate a 43% reduction in the hazard of infection, further investigation is essential to confirm the effect and improve the model's precision.
+
+Given the complex nature of burn injuries, burn site variables represent an important avenue for further exploration. Different anatomical locations may influence infection risk and survival outcomes due to variations in skin thickness, vascularization, and proximity to vital organs. For example, burns in critical areas such as the respiratory tract or head might carry higher risks compared to those on extremities.
+
+To determine whether incorporating burn site variables enhances the model's predictive ability, we conducted stepwise regression in both directions using the Akaike Information Criterion (AIC) as the selection criterion. This analysis aims to identify whether specific burn locations contribute significantly to survival outcomes, providing a more nuanced understanding of treatment efficacy and guiding targeted interventions.
+
+```{r, include = FALSE}
+# Perform stepwise selection (both directions)
+stepwise_model <- step(burn.cox, scope = list(
+  lower = ~ factor(Treatment),
+  upper = ~ factor(Treatment) + factor(SiteHead) + factor(SiteButtock) + 
+            factor(SiteTrunk) + factor(SiteUpperLeg) + factor(SiteLowerLeg) + factor(SiteRespTract), 
+  direction = "both", trace = 1))
+summary(stepwise_model)
+```
+
+**1. Adding burn site as individual factors**
+
+We began with a baseline model that included only treatment type (Routine Care vs. Total Body Cleansing) as the predictor. To assess the potential contribution of burn site variables (SiteHead, SiteButtock, SiteTrunk, SiteUpperLeg, SiteLowerLeg, and SiteRespTract), each was added individually, and its inclusion was evaluated using the Akaike Information Criterion (AIC). None of the individual variables improved model fit, as all resulted in slightly higher AIC values compared to the baseline model (AIC = 436.84). The variable with the lowest AIC upon inclusion was SiteButtock (AIC = 437.12), but it still did not significantly enhance the model.
+
+Given these findings, we next considered whether including all burn site variables as a group might provide meaningful explanatory power. This approach enables us to evaluate the combined effects of burn sites on survival outcomes, offering a more comprehensive assessment of their potential influence.
+
+```{r, include = FALSE}
+burn1$AnySkinBurn <- as.integer(burn1$SiteHead == "Burned" |
+                                 burn1$SiteButtock == "Burned" |
+                                 burn1$SiteTrunk == "Burned" |
+                                 burn1$SiteUpperLeg == "Burned" |
+                                 burn1$SiteLowerLeg == "Burned")
+```
+
+```{r, include = FALSE}
+stepwise_model1.1 <- step(burn.cox, scope = list(
+  lower = ~ factor(Treatment),
+  upper = ~ factor(Treatment) + factor(AnySkinBurn) + factor(SiteRespTract)
+), direction = "both", trace = 1)
+
+# Summary of the selected model
+summary(stepwise_model1.1)
+```
+
+**2. Adding burnsite as collective factor**
+
+To evaluate whether burn site variables collectively contribute meaningful information to the Cox proportional hazards model, a composite variable AnySkinBurn was created, indicating whether burns were present at any skin-related site (e.g., SiteHead, SiteTrunk, SiteUpperLeg, SiteLowerLeg, or SiteButtock). A stepwise selection procedure was then performed with the initial model including only treatment type and the option to add AnySkinBurn and SiteRespTract to the model. The results indicated that neither AnySkinBurn (AIC = 438.23) nor SiteRespTract (AIC = 438.79) substantially improved the model fit compared to the baseline model (AIC = 436.84). 
+
+These findings suggest that accounting for burn site variables, either individually or as a group, does not provide additional explanatory power beyond the treatment type in predicting survival outcomes. 
+
+Next, we conducted a stepwise regression to account for other time-independent variables. This process identified treatment, race, and burn type as meaningful predictors as follow: 
+
+```{r, include = FALSE}
+stepwise_model_indep <- step(burn.cox, scope = list(
+  lower = ~ factor(Treatment),
+  upper = ~ factor(Treatment) + factor(Gender) + factor(Race) + PercentBurned+ factor(SiteHead) + factor(SiteButtock) + 
+            factor(SiteTrunk) + factor(SiteUpperLeg) + factor(SiteLowerLeg) + factor(SiteRespTract) + factor(BurnType), 
+  direction = "both", trace = 1))
+summary(stepwise_model_indep)
+```
+
+```{r, echo = FALSE}
+cox_model_table2 <- data.frame(
+  Variable = c("Treatment:Cleansing", "Race:White", "BurnType:Scald", 
+               "BurnType:Electric", "BurnType:Flame", "Gender:Female"),
+  Coeff = c(-0.6476, 2.2875, 1.5992, 2.0670, 1.0164, -0.5604),
+  `exp(coeff)` = c(0.5233, 9.8499, 4.9491, 7.9013, 2.7633, 0.5710),
+  `SE(coef)` = c(0.2989, 1.0264, 1.0873, 1.0892, 1.0173, 0.3966),
+   z = c(-2.166, 2.229, 1.471, 1.898, 0.999, -1.413),
+  p = c(0.0303, 0.0258, 0.1413, 0.0577, 0.3177, 0.1576),
+  Lower_95 = c(0.2913, 1.3175, 0.5875, 0.9345, 0.3762, 0.2625),
+  Upper_95 = c(0.9401, 73.6426, 41.6888, 66.8077, 20.2950, 1.2421)
+)
+
+# Generate the table
+cox_model_table2 %>%
+  kbl(caption = "Cox Proportional Hazards Model Results") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F)
+```
+
+Model Fit Statistics:
+
+- Concordance= 0.719  (se = 0.037 )
+- Likelihood ratio test= 24.07  on 6 df,   p=5e-04
+- Wald test            = 19.07  on 6 df,   p=0.004
+- Score (logrank) test = 22.46  on 6 df,   p=0.001
+
+The result provide us insights into the factors influencing survival and infection risks in burn patients. The following are the interpretation of the variables:
+
+- Treatment:Cleansing (HR = 0.5233, p = 0.0303) : Patients who received total body cleansing with an antimicrobial agent had a 47.7% lower hazard of infection compared to those who underwent routine bathing. The statistically significant p-value (0.0303) suggests that this effect is unlikely to be due to chance. This result highlights the potential benefit of antimicrobial cleansing as part of infection control strategies.
+
+- Race: White (HR = 9.8499, p = 0.0258): White patients had a 9.8 times higher hazard of infection compared to the reference racial group. The significant p-value (0.0258) suggests that this disparity is meaningful. However, this result may be influenced by the predominance of White patients in the dataset, necessitating cautious interpretation and further investigation into potential confounding factors.
+
+- Burn Type: 
+
+1. Scald (HR = 4.9491, p = 0.1413): Scald burns were associated with a nearly 5-fold increase in the hazard of infection compared to the chemical burn type, but the effect was not statistically significant (p = 0.1413). This suggests that scald burns may elevate infection risk, but further research is needed to confirm this relationship.
+
+2. Electric (HR = 7.9013, p = 0.0577) : Patients with electrical burns had a 7.9 times higher hazard of infection compared to the chemical burn type. The p-value (0.0577) indicates a trend toward significance, suggesting that electrical burns may substantially increase infection risk, though additional studies are needed to strengthen this finding.
+
+3. Burn Type: Flame (HR = 2.7633, p = 0.3177): Flame burns were associated with a 2.76 times higher hazard of infection compared to the chemical burn, but the result was not statistically significant (p = 0.3177). This suggests that while flame burns might elevate infection risk, this effect is not strong or consistent in this dataset.
+Gender: Female (HR = 0.5710, p = 0.1576)
+
+- Female patients had a 43% lower hazard of infection compared to male patients. However, the p-value (0.1576) indicates that this finding is not statistically significant, meaning the observed gender difference could be due to random variation.
+
+The model, showed an improved concordance index of 0.719 (SE = 0.037), demonstrates reasonable predictive accuracy, correctly ranking the risk of infection in approximately 72% of cases. The likelihood ratio test (p=0.0005), Wald test (p=0.004), and score (logrank) test (p=0.001) further indicate that the model provides a statistically significant fit to the data. Thus, we will proceed with this model for further model checking and validation.
+
+#### 4.1.2 Model Checking
+
+Building on the Cox proportional hazards model developed earlier, we now evaluate its key assumptions to ensure its validity. The assumptions are as follows:
+
+- Proportional Hazards: The relative risk of an event between different groups remains constant over time.
+- Time-Independent Covariates: The effects of the predictors do not vary over time.
+- Non-Informative Censoring: The likelihood of censoring (e.g., loss to follow-up) is unrelated to the probability of the event occurring.
+
+Although the non-informative censoring assumption cannot be directly tested, the study's consistent follow-up procedures and lack of evidence suggesting systematic differences between censored and non-censored patients support the plausibility of this assumption. Since the included covariates are time-independent, our primary focus will be on verifying the proportional hazards assumption and assessing the model's overall fit. Ensuring that these assumptions are met is critical for the reliability of the model's results.
+
+**Schoenfeld Residual**
+
+```{r, echo = FALSE,fig.align ='center', fig.height = 4, fig.width = 6}
+burn.zph <- cox.zph(stepwise_model_indep)
+#plot(burn.zph[1], main = "Schoenfeld Residuals for Treatment Type")
+
+plot(burn.zph[1], 
+     main = "Schoenfeld Residuals for Treatment Type", 
+     col = darjeeling_colors[5],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "darkred",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for Treatment",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     )  
+```
+
+This graph displays the Schoenfeld residuals for the Treatment variable in a Cox proportional hazards model. It is used to visually assess whether the proportional hazards assumption holds for this covariate. The x-axis represents time (on a logarithmic scale), while the y-axis represents the scaled Schoenfeld residuals, which capture deviations of the estimated coefficient for Treatment, $\beta(t)$, from its overall value. Each point corresponds to a scaled residual for Treatment at a specific event time.
+
+The residuals fluctuate randomly around 0, and the dashed confidence intervals around the smooth trend line consistently include 0 across the time range. This pattern indicates that the hazard ratio for Treatment is likely to remain constant over time, supporting the proportional hazards assumption. 
+
+
+```{r, echo = FALSE,fig.align ='center', fig.height = 4, fig.width = 6}
+burn.zph <- cox.zph(stepwise_model_indep)
+
+plot(burn.zph[2], 
+     main = "Schoenfeld Residuals for Race", 
+     col = darjeeling_colors[4],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "darkred",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for Race",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     )  
+```
+
+This Schoenfeld residuals plot for the variable "Race" examines the proportional hazards assumption in the Cox model. The orange line represents the estimated relationship between the residuals and time, while the dashed lines indicate the confidence intervals. The relatively flat orange line suggests that the effect of "Race" does not vary significantly over time, supporting the proportional hazards assumption for this variable. 
+
+
+```{r, echo = FALSE,fig.align ='center', fig.height = 4, fig.width = 6}
+burn.zph <- cox.zph(stepwise_model_indep)
+#plot(burn.zph[1], main = "Schoenfeld Residuals for Treatment Type")
+
+plot(burn.zph[3], 
+     main = "Schoenfeld Residuals for Burn Type", 
+     col = darjeeling_colors[2],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "darkred",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for Burn Type",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     )  
+```
+
+This Schoenfeld residuals plot for the variable "Burn Type" assesses the proportional hazards assumption in the Cox model. The green line represents the estimated relationship between the residuals and time, while the dashed lines indicate the confidence intervals. The slight curvature in the green line suggests a potential deviation from the proportional hazards assumption, as the effect of "Burn Type" may vary over time. However, the confidence intervals are relatively wide at certain time points (e.g., after time 33), indicating less certainty about the estimates. Additionally, there are a few noticeable outliers, especially at earlier and later time points, which could impact the overall model fit and should be investigated further.
+
+```{r, echo = FALSE,fig.align ='center', fig.height = 4, fig.width = 6}
+burn.zph <- cox.zph(stepwise_model_indep)
+#plot(burn.zph[1], main = "Schoenfeld Residuals for Treatment Type")
+
+plot(burn.zph[4], 
+     main = "Schoenfeld Residuals for Gender", 
+     col = darjeeling_colors[1],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "darkred",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for Gender",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     )  
+```
+
+This Schoenfeld residuals plot for the variable "Gender" evaluates the proportional hazards assumption in the Cox model. The red line represents the estimated relationship between the residuals and time, with the dashed lines showing the confidence intervals. The curvature in the red line indicates a potential violation of the proportional hazards assumption. However, the interval includes 0 most of the time, which implies that further investigation of this is necessary.
+
+To confirm the above visual observation, we will proceed with a formal statistical test.
+
+```{r, include = FALSE}
+print(burn.zph)
+```
+
+```{r, echo = FALSE}
+# Create a data frame for the Chi-squared test results
+chisq_results <- data.frame(
+  Test = c("Treatment", "Race", "BurnType",  "Gender", "GLOBAL"),
+  Chi_Sq = c(0.454, 2.436, 8.452, 1.58, 13.213),
+  df = c(1, 1,3,1,6),
+  p_value = c(0.501, 0.119, 0.038, 0.209, 0.04)
+)
+
+# Display the table using kable
+chisq_results %>%
+  kable("html", caption = "Schoenfeld Residual Test Results", digits = 6) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2:4, width = "2in") %>%
+  row_spec(0, bold = TRUE)  # Make the header row bold
+```
+
+The Schoenfeld residuals test was used to evaluate whether the hazard ratios for covariates in the Cox model remain constant over time, which is a key assumption of the model. We tested this at a significance level of $\alpha = 0.05$. The followinng are the hypotheses: 
+
+- $H_0$: The hazard ratio for each covariate is proportional (constant) over time, meaning the proportional hazards assumption holds.
+- $H_a$: The hazard ratio changes over time, indicating that the proportional hazards assumption is violated for one or more covariates.
+
+Test Results:
+
+- Treatment: p>0.05, there is no significant evidence to suggest a violation of the proportional hazards assumption for the Treatment variable.
+- Race: p=0.119 (Chi-Sq = 2.436, df = 1). Similarly, the assumption holds for Race as p>0.05.
+- Burn Type: p=0.038 (Chi-Sq = 8.452, df = 3). Here, p<0.05, indicating a potential violation of the proportional hazards assumption for Burn Type.
+- Gender: p=0.209 (Chi-Sq = 1.580, df = 1). The assumption holds for Gender as p>0.05.
+- GLOBAL Test (entire model): p=0.040 (Chi-Sq = 13.210, df = 6). This result suggests a slight overall violation of the proportional hazards assumption when considering all covariates together.
+
+The proportional hazards assumption appears to hold for Treatment, Race, and Gender individually, but there is evidence of a potential violation for Burn Type. Additionally, the global test indicates a mild violation for the overall model. These results suggest that while the Cox model is generally appropriate, further analysis may be needed to address the potential non-proportionality of Burn Type and its influence on the overall model fit. Time-varying covariates or stratification could be considered to address these issues. We will first proceed with exploring time-varying covariates in the next section.
+
+**Cox-Snell Residual**
+
+```{r, echo = FALSE, fig.align = 'center', fig.height = 4, fig.width = 6}
+#fit martingale for full model
+burn.mart <- residuals(stepwise_model_indep,type="martingale")
+
+#find cox-snell residuals: martingales subtracted from event indicator
+burn.cs <- burn1$D3-burn.mart
+
+#cumulative hazard of CS residuals
+surv.csr <- survfit(Surv(burn.cs,burn1$D3)~1,type="fleming-harrington")
+
+plot(surv.csr,fun="cumhaz")
+# abline(0,1)
+#title("Cumulative Hazard of Cox-Snell Residuals")
+
+abline(0, 1, col = "darkred")  # Diagonal line with red color and dashed style
+
+# Customize the title
+title("Cumulative Hazard of Cox-Snell Residuals",
+      cex.main = 1.1,     # Adjust title size
+      col.main = "darkred")  # Change title color
+```
+
+This plot displays the cumulative hazard of Cox-Snell residuals, a diagnostic tool used to assess the overall goodness-of-fit of a Cox proportional hazards model. It helps evaluate whether the fitted model adequately describes the observed data. The X-axis represents the Cox-Snell residuals, which are estimates of the cumulative hazard for each observation, while the Y-axis represents the Nelson-Aalen cumulative hazard estimate based on these residuals.
+
+The diagonal reference line with a slope of 1 (45-degree line) represents the theoretical cumulative hazard of a perfect exponential distribution, expected under a correctly specified Cox model. The step line represents the observed cumulative hazard of the Cox-Snell residuals. In this case, the step line closely follows the diagonal reference line, particularly in the lower range of the residuals, suggesting that the model provides an adequate fit to the data. However, minor deviations at higher residuals indicate potential areas for improvement, which may be attributed to the observed violation of the proportional hazards assumption for the Burn Type covariate.
+
+###  4.2 Time-Dependent Cox Model
+
+Although the Schoenfeld residuals and Cox-Snell residual diagnostics largely support the proportional hazards assumption for Treatment, Race, and Gender, there is evidence of a violation for Burn Type, and the global test indicates a mild violation for the overall model. These findings suggest that while the Cox model is generally appropriate, it may fail to fully account for non-proportionality in Burn Type. Incorporating time-dependent covariates offers a potential solution by allowing the effects of Burn Type to vary over time, addressing the observed violations. For instance, the influence of specific burn types on survival risk may change as patients progress through different stages of healing or as interventions are applied. By including time-varying covariates, the model can better capture these dynamic processes, improving its explanatory power and ensuring a more robust and clinically meaningful understanding of survival outcomes.
+
+#### 4.2.1 Model Construction
+
+```{r, include = FALSE}
+# Building a new dataset
+
+nsubj <- dim(burn1)[1]
+id <- 1:nsubj
+#to identify the subject across multiple lines
+burn1 <- data.frame(id,burn1)
+
+#new dataset
+#set the final observation time, T3 = Time To Relapse, Death Or End Of Study
+burn2 <- tmerge(burn1,burn1,id=id,tstop=T3)
+
+#set time to excision or on study time
+#T1 = Time To excision or on study time
+burn2 <- tmerge(burn2,burn1,id=id,ET=tdc(T1))
+
+#set time to prophylactic antibiotic treatment
+#T2 = Time to prophylactic antibiotic treatment or on study time
+burn2 <- tmerge(burn2,burn1,id=id,AT=tdc(T2))
+
+#status only = 1 if at end of t3 and not censored
+#d3 = Disease Free Survival Indicator 1-Dead Or Relapsed, 0-Alive Disease Free 
+status <- as.integer(with(burn2,(tstop==T3 & D3)))
+
+#put together
+burn2 <- data.frame(burn2,status)
+
+# head(burn2,10)
+```
+
+```{r, include = FALSE}
+surv2 <- Surv(time=burn2$tstart,time2=burn2$tstop,event=burn2$status,type="counting")
+burn.cox2 <- coxph(surv2 ~ factor(Treatment)+ ET + AT , data=burn2)
+summary_cox2 <- summary(burn.cox2)
+summary_cox2 
+```
+
+```{r, echo = FALSE}
+# Reset row names and include them directly as a column
+cox_results2 <- summary_cox2$coefficients %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Variable") %>%
+  mutate(
+    Lower_95 = summary_cox2$conf.int[, "lower .95"],
+    Upper_95 = summary_cox2$conf.int[, "upper .95"]
+  )
+
+# Rename columns for clarity
+colnames(cox_results2) <- c(
+  "Variable", "Coeff", "Exp(Coeff)", "SE(Coeff)", "Z", "p", "Lower_95", "Upper_95"
+)
+
+# Display the table with kable
+cox_results2 %>%
+  kable("html", caption = "Cox Proportional Hazards Model Results", digits = 3) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2:8, width = "2in") %>%
+  row_spec(0, bold = TRUE)  # Make the header row bold
+```
+
+
+Model Fit Statistics:
+
+- Concordance = 0.61 (se = 0.041)
+- Likelihood ratio test = 8.14 on 3 df, p = 0.04
+- Wald test = 7.52 on 3 df, p = 0.06
+- Score (logrank) test = 7.81 on 3 df, p = 0.05
+
+To explore whether incorporating time-dependent covariates could improve the model, we start with adding variables for time to excision (ET) and time to prophylactic antibiotic treatment (AT) to the Cox proportional hazards model, along with treatment type. The updated model showed a modest improvement in fit, with a concordance of 0.61 (compared to 0.566 in the initial model) and a likelihood ratio test p-value of 0.04, suggesting that the inclusion of these covariates contributes to explaining survival outcomes. ET demonstrated a significant negative effect (coefficient = -0.957, HR = 0.384, p = 0.046), indicating that shorter times to excision are associated with a reduced infection hazard. In contrast, AT was not significant (p = 0.958), suggesting that time to prophylactic antibiotic treatment does not meaningfully affect the risk of infection in this dataset. The treatment effect (HR = 0.634, p = 0.128) remained marginally significant. Overall, the model highlights the potential importance of timely excision in improving survival outcomes, while the effect of prophylactic antibiotic timing appears less impactful.
+
+Building on this, we aim to explore the inclusion of additional time-independent covariates to further refine the model. Specifically, we will assess the role of percent burned—a key continuous variable in the dataset—by evaluating its impact both as a continuous variable and after categorizing it into burn severity groups.
+
+**1. Adding Percent Burned as Continuous Variable**
+
+```{r, include = FALSE}
+# Perform stepwise selection (both directions)
+stepwise_model2 <- step(burn.cox2, scope = list(
+  lower = ~ factor(Treatment),
+  upper = ~ factor(Treatment) + factor(Gender)+ factor(Race)+ PercentBurned +
+            factor(SiteHead) + factor(SiteButtock) + factor(SiteTrunk) + 
+            factor(SiteUpperLeg) + factor(SiteLowerLeg) + factor(SiteRespTract) + 
+            factor(BurnType)+ ET + AT), 
+  direction = "both", trace = 1)
+summary(stepwise_model2)
+```
+
+To explore the impact of additional time-independent covariates on the model, a stepwise selection procedure was performed with treatment, burn characteristics (e.g., burn type, percent burned, site), patient demographics (gender, race), and time-dependent variables (ET, AT) as potential predictors. 
+
+```{r, echo = FALSE}
+step2_results <- data.frame(
+  Variable = c("Treatment:Cleansing", "ET", "Race:White", 
+               "BurnType:Scald", "BurnType:Electric", "BurnType:Flame"),
+  Coeff = c(-0.5021, -0.8756, 2.2963, 1.4034, 1.9778, 0.8961),
+  HR = c(0.6053, 0.4166, 9.9373, 4.0690, 7.2266, 2.4501),
+  "SE(Coeff)" = c(0.3022, 0.4979, 1.0270, 1.0896, 1.0898, 1.0178),
+  Z = c(-1.662, -1.758, 2.236, 1.288, 1.815, 0.880),
+  p = c(0.0966, 0.0787, 0.0254, 0.1977, 0.0695, 0.3786),
+  Lower_95 = c(0.3348, 0.1570, 1.3277, 0.4809, 0.8538, 0.3333),
+  Upper_95 = c(1.094, 1.106, 74.379, 34.429, 61.170, 18.010)
+)
+
+# Create the table
+step2_results %>%
+  kable(
+    caption = "Stepwise Regression Result (Percent Burned as Continuous)",
+    col.names = c("Variable", "Coefficient", "HR", "SE(Coeff)", "Z", "P-Value", "Lower 95% CI", "Upper 95% CI"),
+    digits = 3
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2:8, width = "2in") %>%
+  row_spec(0, bold = TRUE)
+```
+
+Model Fit Statistics:
+
+- Concordance= 0.737  (se = 0.034 )
+- Likelihood ratio test= 25.16  on 6 df,   p=3e-04
+- Wald test            = 20.02  on 6 df,   p=0.003
+- Score (logrank) test = 23.35  on 6 df,   p=7e-04
+
+The stepwise returned a model including treatment type, ET, race, and burn type, achieving a concordance of 0.737, indicating improved predictive ability compared to previous models (concordance = 0.566, 0.61, 0.719). In this model, race (HR = 9.94, p = 0.025) was significantly associated with the risk of infection, suggesting that White patients had higher hazards relative to the reference group. Among burn types, electrical burns showed a marginally significant hazard ratio (HR = 7.23, p = 0.07), while scald and flame burns did not reach significance. The effect of ET (time to excision) remained borderline significant (HR = 0.42, p = 0.079), suggesting that shorter times to excision may reduce the hazard for infection. The treatment effect (HR = 0.61, p = 0.097) became less significant, highlighting the stronger influence of race and burn type in the model. Overall, this analysis suggests that incorporating key demographic and burn characteristics substantially improves model performance, with race and ET being critical predictors of the risk of infection. 
+
+**2. Adding Percent Burned as Categorical Variable**
+
+As we observed from the stepwise result above, percent burned when accounted as a continuous variable, did not appear to be meaningful in modeling the infection risk. In this section, we will try to account for the burn percentage in categorical form. To facilitate interpretation and analysis, percent burned variable was categorized into four groups: Mild (0-10%), Moderate (11-20%), Severe (21-40%), and Very Severe (41% and above). This categorization balances clinical relevance with the statistical distribution of the data, ensuring meaningful comparisons across different levels of burn severity. The following is the result of the grouping
+
+```{r, include = FALSE}
+burn2$BurnSeverity <- cut(
+  burn2$PercentBurned,
+  breaks = c(-Inf, 10, 20, 40, Inf),
+  labels = c("Mild", "Moderate", "Severe", "Very Severe"),
+  right = TRUE
+)
+```
+
+```{r, echo = FALSE}
+# table(burn2$BurnSeverity)
+
+# Create a data frame for the summary
+burn_severity_summary <- data.frame(
+  Category = c("Mild", "Moderate", "Severe", "Very Severe"),
+  BurnPercent = c("< 10%", "11-20%", "21-40%", "> 40%"),
+  Count = c(62, 107, 71, 48)
+)
+
+
+burn_severity_summary %>%
+  kable(
+    caption = "Summary of Burn Severity Categories",
+    col.names = c("Burn Severity", "Burn Percent", "Count"),
+    align = "c"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = FALSE
+  ) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2, width = "10cm")
+```
+
+
+```{r, include = FALSE}
+# Perform stepwise selection (both directions)
+stepwise_model3 <- step(burn.cox2, scope = list(
+  lower = ~ factor(Treatment),
+  upper = ~ factor(Treatment) + factor(Gender)+ factor(Race)+ factor(BurnSeverity) +
+            factor(SiteHead) + factor(SiteButtock) + factor(SiteTrunk) + 
+            factor(SiteUpperLeg) + factor(SiteLowerLeg) + factor(SiteRespTract) + 
+            factor(BurnType)+ ET + AT), 
+  direction = "both", trace = 1)
+summary(stepwise_model3)
+```
+
+```{r, echo = FALSE}
+# Create a data frame for the Cox model results
+step3_results <- data.frame(
+  Variable = c("Treatment:Cleansing", "ET", "Race:White", 
+               "BurnType:Scald", "BurnType:Electric", "BurnType:Flame",
+               "BurnSeverity:Moderate", "BurnSeverity:Severe", "BurnSeverity:Very Severe"),
+  Coeff = c(-0.47732, -0.95885, 2.44043, 1.60735, 2.04746, 0.93210, 
+                  -0.08067, 0.83706, 0.16895),
+  HR = c(0.62044, 0.38333, 11.47802, 4.98955, 7.74819, 2.53984, 
+         0.92249, 2.30957, 1.18406),
+  "SE(Coeff)" = c(0.30376, 0.51273, 1.03439, 1.09418, 1.09015, 1.02439, 
+               0.49540, 0.46921, 0.54782),
+  Z = c(-1.571, -1.870, 2.359, 1.469, 1.878, 0.910, 
+        -0.163, 1.784, 0.308),
+  p = c(0.1161, 0.0615, 0.0183, 0.1418, 0.0604, 0.3629, 
+              0.8706, 0.0744, 0.7578),
+  Lower_95 = c(0.3421, 0.1403, 1.5114, 0.5844, 0.9147, 0.3411, 
+               0.3494, 0.9207, 0.4046),
+  Upper_95 = c(1.125, 1.047, 87.165, 42.602, 65.636, 18.913, 
+               2.436, 5.793, 3.465)
+)
+
+# Generate the table
+step3_results %>%
+  kable(
+    caption = "Stepwise Regression Result (Percent Burned as Categorical)",
+    col.names = c("Variable", "Coefficient", "HR", "SE(Coeff)", "Z", "p", "Lower 95% CI", "Upper 95% CI"),
+    digits = 3
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2:8, width = "2in") %>%
+  row_spec(0, bold = TRUE)
+  
+```
+
+Model Fit Statistics:
+
+- Concordance= 0.753  (se = 0.037 )
+- Likelihood ratio test= 32.49  on 9 df,   p=2e-04
+- Wald test            = 27.1  on 9 df,   p=0.001
+- Score (logrank) test = 30.46  on 9 df,   p=4e-04
+
+We performed stepwise regression using a base model that included treatment type, time to excision (ET), and time to prophylactic antibiotic treatment (AT). Additional variables, such as race, gender, burn sites, burn type, and burn severity, were evaluated for inclusion. The final model incorporated treatment type, ET, burn type, race, and categorized burn severity (BurnSeverity), resulting in a significant improvement in model performance. The concordance increased to 0.753, indicating better predictive accuracy compared to earlier models, and model fit statistics provided strong support: likelihood ratio test (p = 0.0002), Wald test (p = 0.001), and log-rank test (p = 0.0004). Among the covariates:
+
+- Time to excision (ET) remained a significant predictor (HR = 0.38, p = 0.061), indicating that shorter times to excision are associated with reduced infection risk.
+- Burn severity (Severe category) showed a notable effect, with a hazard ratio of 2.31 (p = 0.074), suggesting increased hazard compared to the Mild category. However, the Moderate and Very Severe categories did not show significant effects.
+- Treatment type (HR = 0.62, p = 0.116) and certain burn types (e.g., Electric burns, HR = 7.75, p = 0.060) remained marginally significant.
+
+These results emphasize the clinical relevance of timely excision and categorizing burn severity while maintaining interpretability and statistical robustness.This model strikes a balance between improved explanatory power and interpretability, making it a statistically and clinically robust choice for further analysis. We will proceed to the model checking section with this model.
+
+
+#### 4.2.2 Model Checking
+
+**Schoenfeld Residual**
+
+```{r, echo = FALSE, fig.align='center', fig.height = 4, fig.width = 6}
+burn.zph3 <- cox.zph(stepwise_model3)
+
+plot(burn.zph3[1], 
+     main = "Schoenfeld Residuals for Treatment Type", 
+     col = darjeeling_colors[1],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "saddlebrown",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for Treatment",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     )  
+```
+
+The residuals show random fluctuations around 0, with the dashed confidence intervals of the smooth line consistently including 0 across the time range. This indicates that the hazard ratio for Treatment remains constant over time, supporting the proportional hazards assumption.
+
+```{r, echo = FALSE, fig.align='center', fig.height = 4, fig.width = 6}
+
+plot(burn.zph3[2], 
+     main = "Schoenfeld Residuals for Excision Time", 
+     col = darjeeling_colors[2],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "saddlebrown",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for ET",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     )  
+```
+
+This plot shows the Schoenfeld residuals for the variable ET (Time to Excision). The residuals fluctuate around 0, and the dashed confidence intervals generally include 0 across most of the time range. This suggests that the hazard ratio for ET is relatively constant over time, supporting the proportional hazards assumption for this variable. However, there are slight deviations at later time points (e.g., beyond 30), where the confidence intervals widen, indicating more variability and fewer data points contributing to the estimate in this range. Overall, the proportional hazards assumption for ET appears to hold.
+
+```{r, echo = FALSE, fig.align='center', fig.height = 4, fig.width = 6}
+
+plot(burn.zph3[3], 
+     main = "Schoenfeld Residuals for Race", 
+     col = darjeeling_colors[3],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "saddlebrown",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for Race",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     ) 
+```
+
+This plot shows the Schoenfeld residuals for the variable Race over time. The residuals generally fluctuate around 0, and the dashed confidence intervals largely include 0 throughout the time range. This suggests that the hazard ratio for Race remains constant over time, supporting the proportional hazards assumption for this variable. However, there is a notable outlier around the 44th time point, which might warrant further investigation. Despite this, the overall pattern does not indicate a systematic violation of the proportional hazards assumption for Race.
+
+```{r, echo = FALSE, fig.align='center', fig.height = 4, fig.width = 6}
+
+plot(burn.zph3[4], 
+     main = "Schoenfeld Residuals for Burn Type", 
+     col = darjeeling_colors[4],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "saddlebrown",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for Burn Type",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     ) 
+```
+
+This plot illustrates the Schoenfeld residuals for Burn Type over time. The residuals display some systematic trends, with the smooth line deviating slightly from zero and the confidence intervals occasionally failing to include zero, particularly at earlier time points (e.g., before time 10). This suggests that the hazard ratio for burn type may not remain constant over time, potentially violating the proportional hazards assumption. The increasing spread of the confidence intervals at later times indicates greater uncertainty due to fewer data points. These findings imply that Burn Type might have a time-varying effect on survival, and it may be worth considering introducing time interaction terms or stratifying the analysis by burn type to address this issue.
+
+```{r, fig.align='center', fig.height = 4, fig.width = 6, echo = FALSE}
+
+plot(burn.zph3[5], 
+     main = "Schoenfeld Residuals for Burn Severity", 
+     col = darjeeling_colors[5],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "saddlebrown",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for Burn Severity",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     ) 
+```
+
+This plot displays the Schoenfeld residuals for Burn Severity in the Cox model, assessing the proportional hazards assumption. The residuals fluctuate around zero, with the smooth blue line largely staying within the dashed confidence intervals. While minor deviations appear at later time points, the overall pattern supports the proportional hazards assumption for Burn Severity. 
+
+To further clarify our observations, we will perform the Schoenfeld residuals test was conducted on the final model to assess whether the proportional hazards assumption holds. Let $\alpha = 0.05$. The following are the hypotheses of the test: 
+
+- $H_0:$ The hazard ratio for each covariate is proportional (constant) over time, meaning the proportional hazards assumption holds.
+- $H_a:$ The hazard ratio changes over time, meaning the proportional hazards assumption is violated for one or more covariates
+
+```{r, include = FALSE}
+print(burn.zph3)
+```
+
+```{r, echo = FALSE}
+schoenfeld_table3 <- data.frame(
+  Variable = c("factor(Treatment)", "ET", "factor(Race)", "factor(BurnType)", "factor(BurnSeverity)","GLOBAL"),
+  Chisq = c(0.156, 0.173, 1.870, 8.107, 7.507, 16.192),
+  Df = c(1, 1, 1, 3, 3, 9),
+  P_Value = c(0.693, 0.678, 0.172, 0.044, 0.057, 0.063)
+)
+
+# Create and style the table
+schoenfeld_table3 %>%
+  kable(
+    caption = "Schoenfeld Residuals Test for Proportional Hazards Assumption",
+    digits = 3, align = "c"
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+```
+
+The global test yielded a borderline result (Chi-sq = 16.192, p = 0.063), suggesting that the assumption holds at the global level but with some caution. Among the individual covariates, most showed no significant violation, including treatment (p = 0.693), ET (p = 0.678), race (p = 0.172), and Burn Severity (p=0.057). However, as we observed in the time independent model, burn type showed a significant violation (Chi-sq = 8.107, p = 0.044), indicating that its effect may vary over time. This suggests that while the model is generally valid under the proportional hazards framework, the time-varying effect of burn type may need to be addressed, by introducing interaction terms with time or stratifying by burn type. These results highlight the importance of further exploring the dynamic nature of burn type in survival outcomes.
+
+**Cox-Snell Residual**
+
+```{r, echo = FALSE, fig.align='center', fig.height = 4, fig.width = 6}
+#fit martingale for full model
+burn.mart3 <- residuals(stepwise_model3,type="martingale")
+
+#find cox-snell residuals: martingales subtracted from event indicator
+burn.cs3 <- burn2$D3-burn.mart3
+
+#cumulative hazard of CS residuals
+surv.csr3 <- survfit(Surv(burn.cs3,burn2$D3)~1,type="fleming-harrington")
+
+plot(surv.csr3,fun="cumhaz")
+#abline(0,1)
+#title("Cumulative Hazard of Cox-Snell Residuals")
+
+abline(0, 1, col = "darkred", lwd = 1.5)  # Diagonal line with red color and dashed style
+
+# Customize the title
+title("Cumulative Hazard of Cox-Snell Residuals",
+      cex.main = 1.1,     # Adjust title size
+      col.main = "saddlebrown")  # Change title color
+```
+
+This plot represents the cumulative hazard of Cox-Snell residuals, which is used to assess the overall fit of the Cox proportional hazards model. Ideally, the cumulative hazard function of the residuals should follow the 45-degree reference line (diagonal) if the model fits well. In this case, the cumulative hazard curve follows the reference line reasonably well at the lower values of the residuals (near 0), suggesting that the model fits adequately for the majority of the data. However, at higher residual values (beyond 1.0), the curve begins to deviate from the reference line, indicating potential misfit in this region, possibly due to the violation of BurnType variable on the proportional hazard assumption. Overall, while the model appears to fit the data sufficiently well in the central range, the deviations at higher residual values suggest that there may be areas where the model could be improved, such as by exploring additional covariates, interaction terms, or time-dependent effects. 
+
+**Burn Type Covariate Analysis**
+
+As we see from the test above, the Burn Type covariate appears to violate the proportional hazard assumption. Since the burn type seems to have significant effect on the model, we want to try introducing interaction terms with time or stratifying by burn type to address this problem.
+
+```{r, echo = FALSE, fig.align='center', fig.height = 4, fig.width = 6}
+KMcurves.bt <- survfit(surv2 ~ BurnType, data = burn2)
+plot(KMcurves.bt, col = darjeeling_colors, main = "KM Curves for Burn Types", lwd =1.5, col.main = "saddlebrown", cex.main = 1.1)
+legend("topright", legend = c("Scald", "Flame", "Chemical", "Electric"), col = darjeeling_colors, lty = 1, lwd = 1.5)
+```
+
+We observe a clear crossing of the survival curves for different burn types in the Kaplan-Meier plot, which suggests a violation of the proportional hazards assumption for this variable. This aligns with the findings from the Schoenfeld residuals test and plot, where non-proportionality was indicated. To address this issue, we can consider stratifying the model by burn type to allow for different baseline hazards across categories.
+
+First, we want to test the assumption of the same regression coefficients for each stratum by testing the interaction between the stratification variable and the covariates. 
+
+1. As a start, we fit an interaction model as follows:
+
+$$surv2 = (Treatment + ET + Race + Burn Severity)*strata(BurnType)$$
+
+2. And we also fit a stratified model as follows:
+
+$$surv2 = Treatment + ET + Race + Burn Severity + strata(BurnType)$$
+
+```{r, warning = FALSE, include = FALSE}
+#fit interaction model
+inter.cox <- coxph(surv2~ (Treatment + ET + Race + BurnSeverity)*strata(BurnType), data = burn2)
+summary(inter.cox)
+```
+
+```{r, include = FALSE}
+#fit stratified model
+strat.cox <- coxph(surv2~ Treatment + ET + Race + BurnSeverity+ strata(BurnType), data = burn2)
+summary(strat.cox)
+```
+
+3. Next, check for a difference between the interaction model and the stratified model
+
+```{r, include = FALSE}
+anova(strat.cox, inter.cox, test = "Chisq")
+```
+
+```{r, echo=FALSE}
+anova_table <- data.frame(
+  Model = c("Model 1: Treatment + ET + Race + strata(BurnType)", 
+            "Model 2: (Treatment + ET + Race) * strata(BurnType)"),
+  LogLikelihood = c(-169.29, -165.56),
+  Chisq = c(" ", 7.4553),
+  Df = c(" ", 7),
+  "p(chi)" = c(" ", 0.0622)
+)
+
+kable(anova_table, 
+      caption = "Analysis of Deviance Table for Cox Model", 
+      digits = 4, align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+```
+
+We get a p-value of 0.0622 which means that there is no significant difference between the stratified model with interaction and the stratified model without interaction terms at $\alpha = 0.05$. This means that the coefficients are not significantly different between the stratified models and the only difference is in the baseline hazard. So it is appropriate to use a stratified model.
+
+
+**Stratified model**
+
+1. Model Description
+
+Based on the result above, we will proceed with the model where we have:
+
+$$ Surv2 = Treatment + ET + Race + Burn Severity + strata(BurnType) $$
+```{r, include = FALSE}
+summary(strat.cox)
+```
+
+```{r, echo = FALSE}
+# Create a data frame for the Cox model results
+cox_results_stratified <- data.frame(
+  Variable = c("Treatment:Cleansing", "ET", "Race:White", 
+               "BurnSeverity:Moderate", "BurnSeverity:Severe", "BurnSeverity:Very Severe"),
+  Coefficient = c(-0.5381, -1.0634, 2.3311, -0.1884, 0.7034, 0.1692),
+  HR = c(0.5839, 0.3453, 10.2890, 0.8283, 2.0207, 1.1844),
+  SE_Coeff = c(0.3012, 0.5250, 1.0290, 0.5018, 0.4684, 0.5494),
+  Z = c(-1.786, -2.025, 2.265, -0.376, 1.502, 0.308),
+  P_Value = c(0.0740, 0.0428, 0.0235, 0.7073, 0.1331, 0.7581),
+  Lower_95 = c(0.3236, 0.1234, 1.3692, 0.3098, 0.8069, 0.4035),
+  Upper_95 = c(1.0537, 0.9662, 77.3169, 2.2145, 5.0605, 3.4767)
+)
+
+# Generate the table
+cox_results_stratified %>%
+  kable(
+    caption = "Cox Proportional Hazards Model Results (Stratified by Burn Type)",
+    col.names = c("Variable", "Coefficient", "HR", "SE(Coeff)", "Z", "p", "Lower 95% CI", "Upper 95% CI"),
+    digits = 3
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2:8, width = "2in") %>%
+  row_spec(0, bold = TRUE)
+```
+
+Model Fit Statistics:
+
+- Concordance= 0.709  (se = 0.046 )
+- Likelihood ratio test= 24.77  on 6 df,   p=4e-04
+- Wald test            = 18.5  on 6 df,   p=0.005
+- Score (logrank) test = 21.22  on 6 df,   p=0.002
+
+In this model, we stratify the BurnType covariate to account for potential differences in baseline infection risks associated with different burn types (e.g., Flame, Scald, Electric, Chemical). Stratification allows each burn type to have its own unique baseline hazard function, reflecting the distinct infection and recovery patterns associated with each type of burn. This approach ensures that the model adjusts for differences in burn type without forcing a single baseline hazard to apply universally.
+
+Importantly, stratifying by BurnType means that the estimated effects of the other covariates—such as Treatment (Routine Care vs. Total Body Cleansing), time to excision (ET), race, and burn severity—are assumed to be consistent across all burn types. While the impact of BurnType itself is not directly estimated in the model, this adjustment ensures that the effects of the key covariates are evaluated more accurately, free from the confounding influence of burn type variability. This approach enhances the model's validity and clinical relevance, given the well-established differences in infection risks across burn types.
+
+In this model we have: 
+
+- Treatment Type (Total Body Cleansing): Associated with a 42% reduction in infection risk compared to Routine Care (HR = 0.58, 95% CI: 0.32–1.05), though this result is marginally significant (p = 0.074).
+- Time to Excision (ET): A shorter time to excision significantly reduces infection risk (HR = 0.35, 95% CI: 0.12–0.97, p = 0.043), emphasizing the importance of prompt surgical intervention.
+- Race (White): White patients have a significantly higher hazard of infection compared to Nonwhite patients (HR = 10.29, 95% CI: 1.37–77.32, p = 0.024), highlighting potential disparities that warrant further investigation.
+- Burn Severity: While the "Severe" category shows a trend toward increased risk (HR = 2.02, p = 0.133), the results for burn severity categories are not statistically significant.
+
+However, the model demonstrates good predictive ability, with a concordance of 0.709. Statistical tests, including the likelihood ratio test (p = 0.0004), Wald test (p = 0.005), and log-rank test (p = 0.002), confirm the significance of the included covariates.
+
+Next, we will check the propotional hazard assumption of the model:
+
+```{r, include = FALSE}
+burn.zph.strat <- cox.zph(strat.cox)
+```
+
+```{r, fig.width=8, fig.height=6, echo = FALSE, fig.align='center'}
+par(mfrow = c(2, 2))
+
+plot(burn.zph.strat[1], 
+     main = "Schoenfeld Residuals for Treatment Type", 
+     col = darjeeling_colors[1],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "saddlebrown",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     ylab = "Beta(t) for Treatment",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     ) 
+
+plot(burn.zph.strat[2], 
+     main = "Schoenfeld Residuals for Excision Time", 
+     col = darjeeling_colors[2],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "saddlebrown",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     #ylab = "Beta(t) for ET",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     )  
+
+plot(burn.zph.strat[3], 
+     main = "Schoenfeld Residuals for Race", 
+     col = darjeeling_colors[3],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "saddlebrown",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     #ylab = "Beta(t) for race",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     )  
+
+plot(burn.zph.strat[4], 
+     main = "Schoenfeld Residuals for Burn Severity", 
+     col = darjeeling_colors[5],               # Color for points
+     cex.main = 1.1,             # Title size
+     col.main = "saddlebrown",       # Title color
+     xlab = "Time",       # Custom X-axis label
+     #ylab = "Beta(t) for Burn Severity",         # Custom Y-axis label
+     cex.lab = 1,
+     lwd = 1.5
+     )  
+
+```
+
+
+The above schoenfeld residuals plots for the covariates (Treatment, ET, Race, and Burn Severity) provide us a visual means of assessing the proportional hazards assumption in the Cox model. 
+
+- Treatment: The Schoenfeld residuals for treatment type (Routine Care vs. Cleansing) fluctuate randomly around zero, and the smoothed curve remains within the confidence intervals for most of the time range. This suggests no strong evidence of violation of the proportional hazards assumption for the treatment variable.
+
+- ET (Excision Time): The residuals for excision time also exhibit a relatively random pattern around zero, with the smoothed curve staying flat and within the confidence intervals. This indicates that the proportional hazards assumption likely holds for ET.
+
+- Race: The residuals for race (White vs. Nonwhite) show some deviation, but the smoothed curve remains relatively flat and within the confidence intervals. Although no major violations are apparent, the wide spread of points in certain time intervals might warrant further examination.
+
+- Burn Severity: The residuals for burn severity show minor oscillations, and the smoothed curve generally stays within the confidence intervals. The proportional hazards assumption appears to hold for this variable, though the variability across categories suggests some sensitivity to time that could benefit from further testing.
+
+The plots collectively support the validity of the proportional hazards assumption for the model covariates, as the residuals exhibit random fluctuation around zero with no substantial systematic trends or violations. While this visual inspection is reassuring, we will further verify these findings by conducting the Schoenfeld residuals test to formally assess the proportional hazards assumption.
+
+```{r, echo = FALSE}
+# Create a data frame for the test results
+burn_zph_strat_table <- data.frame(
+  Variable = c("Treatment", "ET", "Race", "BurnSeverity", "GLOBAL"),
+  Chisq = c(0.428, 0.072, 2.344, 3.960, 7.130),
+  Df = c(1, 1, 1, 3, 6),
+  P_Value = c(0.51, 0.79, 0.13, 0.27, 0.31)
+)
+
+# Create and style the table
+burn_zph_strat_table %>%
+  kable(
+    caption = "Schoenfeld Residuals Test (Stratified Model)",
+    digits = 3,
+    col.names = c("Variable", "Chisq", "Df", "p"),
+    align = "c"
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+```
+
+The test results indicate that none of the covariates violated the proportional hazards assumption, as all p-values are well above the typical significance threshold of 0.05. Specifically:
+
+- The Treatment variable had a p-value of 0.51, suggesting no evidence of time-dependent effects.
+- The ET (time to excision) variable also showed no violation, with a p-value of 0.79.
+- The Race and Burn Severity variables had p-values of 0.13 and 0.27, respectively, indicating acceptable adherence to the proportional hazards assumption.
+- The global test for all covariates yielded a p-value of 0.31, further supporting the validity of the model.
+
+Thus, we confirm that the stratified Cox model assumptions are appropriate, ensuring the reliability of the hazard ratio estimates and the overall model's predictive validity.
+
+```{r, echo = FALSE, fig.align='center', fig.height = 4, fig.width = 6}
+#fit martingale for full model
+burn.mart.strat <- residuals(strat.cox,type="martingale")
+
+#find cox-snell residuals: martingales subtracted from event indicator
+burn.cs.strat <- burn2$D3-burn.mart.strat
+
+#cumulative hazard of CS residuals
+surv.csr.strat <- survfit(Surv(burn.cs.strat,burn2$D3)~1,type="fleming-harrington")
+
+plot(surv.csr.strat,fun="cumhaz")
+#abline(0,1)
+#title("Cumulative Hazard of Cox-Snell Residuals")
+
+abline(0, 1, col = "darkred", lwd = 1.5)  # Diagonal line with red color and dashed style
+
+# Customize the title
+title("Cumulative Hazard of Cox-Snell Residuals",
+      cex.main = 1.1,     # Adjust title size
+      col.main = "saddlebrown")  # Change title color
+```
+
+In this  Cox-Snell residuals plot, the cumulative hazard for the stratified model aligns reasonably well with the reference line for lower values of the residuals, indicating a good fit for much of the data. However, some deviation is observed at higher residual values, suggesting that while the stratified model adequately accounts for differences between strata (burn types), it may still miss certain complexities or patterns in the data. Despite these minor deviations, the overall alignment supports the model as a reasonable fit, particularly given the stratification by burn type.
+
+## 5. Model Performance
+
+### 5.1 Time independent model:
+
+The initial Cox proportional hazards model was expanded to include additional predictors: Treatment, Race, Burn Type, and Gender. This updated model provides a more comprehensive analysis of the factors influencing survival outcomes in burn patients.
+
+- Treatment: Total Body Cleansing significantly reduced the hazard compared to Routine Care (HR = 0.52, 95% CI: 0.29–0.94, p = 0.030), indicating a 48% reduction in hazard.
+- Race: White patients showed a significantly higher hazard compared to non-White patients (HR = 9.85, 95% CI: 1.32–73.64, p = 0.026), suggesting potential disparities in survival outcomes.
+- Burn Type: While Scald and Electric burns showed elevated hazards (HR = 4.95 and HR = 7.90, respectively), these effects were not statistically significant (p = 0.141 and p = 0.058). Flame burns showed a smaller and non-significant effect (HR = 2.76, p = 0.318).
+- Gender: Female patients had a reduced hazard compared to male patients (HR = 0.57), but the result was not statistically significant (p = 0.158).
+
+Model performance metrics showed a concordance of 0.719 (SE = 0.037), indicating good predictive accuracy. Likelihood ratio (p=5e−04), Wald (p=0.004), and Score (logrank) (p=0.001) tests demonstrated that the inclusion of these covariates significantly improved the model’s fit compared to the treatment-only model.
+
+This model highlights the significant role of Total Body Cleansing in reducing hazard and identifies Race as a key predictor. While Burn Type and Gender showed notable trends, their effects require further exploration in larger datasets. The concordance and significance tests indicate that this updated model provides a stronger foundation for understanding survival outcomes compared to the simpler treatment-only model.
+
+### 5.2 Time dependent model:
+
+#### Non stratified
+
+The Cox proportional hazards model, incorporating both time-independent and burn-related covariates, including treatment type, time to excision (ET), race, burn type, and burn severity, demonstrated substantial improvements in predictive performance.
+
+- Treatment Effect: Total Body Cleansing was associated with a 38% reduction in hazard (HR = 0.62, 95% CI: 0.34–1.13, p = 0.116), though this result was not statistically significant.
+- Time to Excision (ET): ET showed a protective effect, with an HR of 0.38 (95% CI: 0.14–1.05, p = 0.062), marginally significant and suggesting shorter excision times may reduce infection risk.
+- Race: White patients had significantly higher hazards (HR = 11.48, 95% CI: 1.51–87.17, p = 0.018) compared to the reference group, indicating race as an important predictor.
+- Burn Type: Electrical burns (HR = 7.75, p = 0.060) and scald burns (HR = 4.99, p = 0.142) exhibited stronger hazard associations than other burn types, though these results approached but did not achieve significance.
+- Burn Severity: Among the burn severity categories, Severe burns had a hazard ratio of 2.31 (95% CI: 0.92–5.79, p = 0.074), with a trend toward significance. The other severity categories (Moderate and Very Severe) did not show significant effects.
+
+Model performance metrics showed substantial improvement:
+
+- Concordance: 0.753, reflecting robust discriminatory ability and improved predictive accuracy over simpler models.
+- Model Fit: The likelihood ratio test (p = 0.0002), Wald test (p = 0.001), and score test (p = 0.0004) and AIC (424.085) supported the model's improved fit
+- Complexity Penalty: The BIC (440.92) remained competitive, showing that the additional predictors did not overly complicate the model.
+
+This updated model underscores the value of incorporating burn severity alongside race, burn type, and time to excision to refine predictions of survival outcomes. While the effect of treatment type remains marginal, the significant contributions of other predictors suggest the model provides a more comprehensive understanding of the factors influencing survival. These findings emphasize the potential need for tailored interventions based on burn characteristics and timely surgical care.
+
+#### Stratified
+
+To address the observed violation of the proportional hazards assumption for burn type, a stratified Cox proportional hazards model was constructed, stratifying by burn type while retaining treatment type, time to excision (ET), race, and burn severity as predictors. Stratification allows the baseline hazard to vary across burn types without estimating specific coefficients for burn type, accommodating the differing baseline risks associated with each burn type.
+
+- Treatment Effect: Total Body Cleansing demonstrated a hazard ratio (HR) of 0.58 (95% CI: 0.32–1.05, p = 0.074), suggesting a 42% reduction in hazard. However, this effect remains marginally significant.
+- Time to Excision (ET): ET emerged as a significant predictor (HR = 0.35, 95% CI: 0.12–0.97, p = 0.043), highlighting the protective effect of earlier excision on survival outcomes.
+- Race: White patients exhibited a significantly higher hazard (HR = 10.29, 95% CI: 1.37–77.32, p = 0.024) compared to the reference group, underscoring the importance of race as a predictor.
+- Burn Severity: Among the burn severity categories, Severe burns showed a hazard ratio of 2.02 (95% CI: 0.81–5.06, p = 0.133), while other categories (Moderate and Very Severe) did not exhibit significant effects.
+
+Model performance metrics indicated competitive fit and predictive ability:
+
+- Concordance: 0.709,  slightly lower than the non-stratified model but still indicative of reasonable discrimination.
+Model Fit: The likelihood ratio test (p = 0.0004), Wald test (p = 0.005), and score test (p = 0.002) all demonstrated statistically significant improvements in fit compared to simpler models.
+AIC and BIC: The AIC (344.12) and BIC (355.35) reflect an improvement in model parsimony and fit over the non-stratified model.
+
+The stratification by burn type effectively addressed the proportional hazards violation observed earlier and allowed the model to account for the varying baseline hazards associated with different burn types. This resulted in a more robust and interpretable model for survival outcomes. 
+
+### 5.3 Model Comparison:
+
+```{r, include = FALSE}
+# Create a data frame for model comparison
+model_comparison <- data.frame(
+  Model = c("Time-Independent", "Time-Dependent Non-Stratified", "Time-Dependent Stratified"),
+  Concordance = c(0.719, 0.753, 0.709),
+  AIC = c(426.5009, 424.085, 344.12),
+  BIC = c(437.7281, 440.92, 355.35),
+  LRT = c(0.0005, 0.0002, 0.0004),
+  Wald = c(0.004, 0.001, 0.005),
+  Logrank = c(0.001, 0.0004, 0.002),
+  Description = c("Basic model with treatment, race, burn type, and gender", "Improved model fit by including time-dependent variables (e.g., excision time) burn types and burn severity.", "Addressed issues with burn type assumptions by stratifying, achieving better fit and interpretability." )
+)
+```
+
+```{r, echo = FALSE}
+kable(
+  model_comparison, 
+  caption = "Model Comparison Table", 
+  digits = 3
+) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"), 
+    full_width = F, 
+    position = "center"
+  )
+```
+
+When evaluating models to predict survival outcomes, it is evident that incorporating time-dependent covariates enhances predictive accuracy. While the time-independent model was straightforward and demonstrated good predictive power (Concordance = 0.719, AIC = 426.50), it faced challenges, including a violation of the proportional hazards assumption for burn type and mild violations indicated by the global Schoenfeld test. Additionally, it did not ccount for the dynamic effects of key factors such as time to excision (ET) and burn severity.
+
+The time-dependent non-stratified model, which included ET, treatment, burn type, and burn severity, outperformed the time-independent model. It achieved a higher concordance of 0.753 and a slightly lower AIC of 424.09, indicating improved accuracy and fit. However, we observe the Schoenfeld residual diagnostics still indicating a potential violation of the proportional hazards assumption for burn type, necessitating further refinement.
+
+The stratified time-dependent model addressed these assumption violations by allowing baseline hazards to vary across burn types. While the concordance decreased slightly to 0.709, this model achieved the lowest AIC (344.12) and BIC (355.35), indicating superior fit and parsimony. By resolving assumption violations, the stratified model provides a statistically robust and clinically interpretable approach to analyzing survival outcomes in burn patients, making it the preferred model for further analysis.
+
+These findings emphasize the importance of accounting for dynamic treatment factors, such as timing of excision, and patient-specific characteristics, like burn type, in survival modeling. The stratified time-dependent model offers a nuanced and reliable framework for supporting evidence-based decision-making in burn care, optimizing treatment strategies and improving patient outcomes.
+
+
+## 6. Interpretation of Results
+
+### 6.1 Key Findings
+
+This stratified Cox proportional hazards model offers valuable insights into factors influencing survival outcomes in burn patients by accounting for baseline hazard variations across burn types. The key findings and their clinical implications are summarized below:
+
+- Treatment Effect (Total Body Cleansing vs. Routine Care):
+Total Body Cleansing is associated with a 42% reduction in hazard (HR = 0.58, 95% CI: 0.32–1.05, p = 0.074), though this result is marginally significant. Clinically, this suggests that antimicrobial cleansing may reduce infection risks, particularly in high-risk patients, warranting further investigation in broader populations.
+
+- Time to Excision (ET):
+Early excision significantly reduces hazard (HR = 0.35, 95% CI: 0.12–0.97, p = 0.043). This finding emphasizes the critical role of timely surgical intervention, aligning with evidence that early debridement can minimize infection risk and improve recovery outcomes.
+
+- Race:
+White patients exhibit a higher hazard (HR = 10.29, 95% CI: 1.37–77.32, p = 0.024) compared to non-White patients. However, given that 87.7% of the dataset comprises White individuals, this finding may reflect limitations in generalizability and potential biases. Clinicians should interpret this cautiously and consider equity in treatment access and follow-up care.
+
+- Burn Severity:
+While hazard ratios suggest an increased risk for severe burns (e.g., Severe HR = 2.02, p = 0.13), none of the severity categories reached statistical significance. This result may reflect the stratification by burn type, which accounts for much of the baseline hazard variability. Clinicians should still consider burn severity as a key factor in prioritizing monitoring and interventions.
+
+These results suggest that while burn severity influences outcomes, the stratified baseline hazard (accounting for burn type) may overshadow the individual contributions of severity categories. Clinicians should still consider burn severity as a factor in care planning, particularly for severe burns, which may require intensive monitoring and intervention.
+
+### 6.2 Clinical Relevance
+
+These findings emphasize actionable opportunities for improving burn care:
+
+- Early Surgical Intervention:
+The protective effect of shorter excision times underscores the urgency of prompt surgical debridement. Incorporating streamlined response protocols and triage tools into burn care workflows can help minimize delays and improve survival outcomes.
+
+- Antimicrobial Cleansing:
+Although marginally significant, Total Body Cleansing shows promise as an adjunct intervention to reduce infection risks. This approach should be further evaluated in controlled trials to determine its role in standard care protocols.
+
+- Health Disparities:
+The observed racial disparities highlight the need for equity-focused strategies. Clinicians should ensure culturally tailored education and follow-up services to bridge gaps in care and improve outcomes for underrepresented groups.
+
+- Comprehensive Care Plans:
+Despite statistical insignificance, burn severity remains clinically relevant. The depth and location of burns should guide the intensity of monitoring and resource allocation, particularly for high-risk patients with deeper or extensive burns.
+
+Suggestions for Clinical Practice:
+
+- Implement Rapid Response Systems: Develop protocols to expedite surgical excision and reduce time delays.
+- Integrate Antimicrobial Cleansing: Trial Total Body Cleansing in high-risk patients and monitor outcomes to refine its use.
+- Address Racial Disparities: Focus on equitable access to burn care through tailored patient education and outreach.
+- Personalize Treatment Plans: Use burn type and severity to guide care prioritization, ensuring individualized treatment approaches.
+
+By applying these findings, healthcare professionals can improve burn care practices, reduce infection risks, and enhance survival outcomes for patients. This model underscores the importance of timely interventions and individualized treatment in optimizing patient recovery.
+
+
+## 7. Interesting or Rare Observations
+
+In this section, we identify and examine interesting or rare observations in the dataset, focusing on those with potential influence on model performance and interpretation. We will use the stratified model. By analyzing residuals (Martingale and Deviance) and DFBeta values, we aim to detect outliers, leverage points, and influential cases that warrant closer clinical and statistical scrutiny
+
+```{r, include = FALSE}
+#fit residuals: martingale, deviance, and df beta
+burn.mart.strat <- residuals(strat.cox,type="martingale")
+burn.dev.strat <- residuals(strat.cox,type="deviance")
+burn.dfb.strat <- residuals(strat.cox,type="dfbeta")
+
+#find linear predictor
+burn.preds <- predict(strat.cox)
+```
+
+**Martingale vs Linear Predictor**
+
+```{r, fig.align='center', fig.height = 4, fig.width = 6, echo=FALSE}
+plot(burn.preds,burn.mart.strat, 
+     xlab = "Linear Predictor", 
+     ylab = "Martingale Residual", 
+     ylim = c(-1.5,1.5), 
+     pch = 19, 
+     cex = 0.5,
+     col = darjeeling_colors[3]) # Change point color to blue
+title("Martingale Residuals vs. Linear Predictor", col.main = "saddlebrown") # Change title color to sb
+text(burn.preds, burn.mart.strat + 0.2, labels = rownames(burn2), cex = 0.7)
+```
+
+The Martingale residuals plot against the linear predictor is used to identify unusual observations that may deviate significantly from the model’s predictions, providing insights into potential outliers or cases not well-explained by the current covariates. Most residuals cluster around zero, indicating that the model fits the majority of patients well. However, observations 100, 43, and 111 stand out as potential outliers with residuals deviating substantially from the main trend. 
+
+**Deviance Residuals vs Linear Predictor**
+
+The deviance residuals are used to identify outliers. Deviance residuals try to symmetrize Martingale residuals and they are a normalized transform of the Martingale residual. Observations with large deviance residuals are poorly predicted by the model.
+
+```{r, fig.align='center', fig.height = 4, fig.width = 6, echo=FALSE}
+plot(burn.preds, burn.dev.strat, 
+     xlab = "Linear Predictor", 
+     ylab = "Deviance Residual", 
+     ylim = c(-3.2, 3.2), 
+     pch = 19, 
+     cex = 0.5,
+     col = darjeeling_colors[2]) # Change point color to blue
+title("Deviance Residuals vs. Linear Predictor", col.main = "saddlebrown") # Change title color to red
+text(burn.preds, burn.dev.strat + 0.3, labels = rownames(burn2), cex = 0.7)
+```
+
+The plot of deviance residuals against the linear predictor helps identify observations with the largest discrepancies between observed and predicted survival outcomes, pinpointing cases that may be outliers or poorly explained by the model. In this plot, the majority of residuals are distributed close to zero, indicating that the model provides a good fit for most observations. However, observations 214, 231, and 286 stand out with the largest deviance residuals. Investigating these observations further could help refine the model and improve its predictive accuracy while also providing insights into exceptional clinical scenarios.
+
+**DFbeta**
+
+To assess the influence of individual observations on the regression coefficients, we will examine the DFBeta values for each covariate. DFBeta identifies observations that disproportionately impact the estimated coefficients, allowing us to detect potential outliers or influential cases that may affect the model's stability and interpretation.
+
+```{r, fig.align='center', fig.height = 4, fig.width = 6, echo=FALSE}
+plot(burn.dfb.strat[,1], 
+     xlab = "Observation Number", 
+     ylab = "dfbeta for Graft Type", 
+     ylim = c(-0.1, 0.1), 
+     pch = 19, 
+     cex = 0.5, 
+     col = darjeeling_colors[3]) # Change point color to blue
+text(burn.dfb.strat[,1] + 0.01, labels = rownames(burn2), cex = 0.7)
+title("dfbeta Values by Observation Number for Treatment", col.main = "saddlebrown")
+```
+
+This plot displays dfbeta values for the treatment variable, helping identify observations with a disproportionate influence on the estimated regression coefficient for treatment. The majority of observations exhibit dfbeta values close to zero, indicating minimal influence on the treatment effect. However, observations 156, 214, and 211 stand out with the largest dfbeta values, suggesting they may exert a notable influence on the treatment coefficient. These points warrant further investigation to assess whether they reflect unique clinical scenarios, potential data anomalies, or outlier characteristics that could impact the model’s interpretation and reliability.
+
+```{r, fig.align='center', fig.height = 4, fig.width = 6, echo=FALSE}
+plot(burn.dfb.strat[,2], 
+     xlab = "Observation Number", 
+     ylab = "dfbeta for Excision Time", 
+     ylim = c(-0.1, 0.1), 
+     pch = 19, 
+     cex = 0.5, 
+     col = darjeeling_colors[4]) # Change point color to green
+text(burn.dfb.strat[,2] + 0.01, labels = rownames(burn2), cex = 0.7)
+title("dfbeta Values by Observation Number for Excision Time", col.main = "saddlebrown")
+```
+
+In examining the DFBeta values for Excision Time, observations 110, 43, and 89 show the largest positive influence on the regression coefficient, while observation 73 exhibits the most substantial negative influence. These points may represent cases with unique characteristics or outliers, warranting further investigation to assess their clinical relevance and potential impact on model robustness.
+
+```{r, fig.align='center', fig.height = 4, fig.width = 6, echo=FALSE}
+plot(burn.dfb.strat[,3], 
+     xlab = "Observation Number", 
+     ylab = "dfbeta for Race", 
+     ylim = c(-0.17, 0.17), 
+     pch = 19, 
+     cex = 0.5, 
+     col = darjeeling_colors[5]) # Change point color to orange
+text(burn.dfb.strat[,3] + 0.01, labels = rownames(burn2), cex = 0.7)
+title("dfbeta Values by Observation Number for Race", col.main = "saddlebrown")
+```
+
+In the DFBeta values for Race, observations 49, 106, and 210 exert the largest positive influence on the regression coefficient, while observations 57, 78, and 111 show the most substantial negative influence. These data points may represent influential cases or potential outliers and warrant further examination to assess their impact on the model and their clinical significance.
+
+```{r, fig.align='center', fig.height = 4, fig.width = 6, echo=FALSE}
+plot(burn.dfb.strat[,4], 
+     xlab = "Observation Number", 
+     ylab = "dfbeta for Burn Severity", 
+     ylim = c(-0.2, 0.2), 
+     pch = 19, 
+     cex = 0.5, 
+     col = darjeeling_colors[1]) # Change point color to cyan
+text(burn.dfb.strat[,4] + 0.01, labels = rownames(burn2), cex = 0.7)
+title("dfbeta Values by Observation Number for Burn Severity", col.main = "saddlebrown")
+```
+
+In examining the DFBeta values for Burn Severity, observations 57, 78, and 158 show the largest positive influence on the coefficient, whereas observations 8, 134, and 286 exhibit the largest negative influence. These influential points suggest potential outliers or cases requiring further investigation to understand their impact on the model and the clinical interpretation of burn severity's role in patient outcomes.
+
+Based on the results above, the following are some observations to examine by residuals and influence:
+
+- Martingale Residuals: 43, 100, 111
+- Deviance Residuals: 214, 231, 286
+- Treatment Influence: 156, 211, 214
+- Excision Time Influence: 43, 89, 73, 110
+- Race Influence: 49, 57, 78, 106, 111, 210
+- Burn Severity Influence: 8, 57, 78, 134, 158, 286
+
+Among these, observations 43, 57, 78, 111, and 286 appear to be the most notable across multiple metrics, suggesting they may have significant influence on the model and require closer inspection.
+
+```{r, echo = FALSE}
+unusualpts <- c(43, 57, 78, 111, 286)
+table_data <- burn2[unusualpts, c("id", "Treatment", "Gender", "Race", "SiteRespTract",
+                                  "PercentBurned", "BurnType", "BurnSeverity", 
+                                  "ET", "AT", "tstop", "status")]
+
+# Create a formatted table
+table_data %>%
+  kbl(caption = "Unusual Points in Burn Dataset") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F)
+```
+
+- Observation 43: A male patient sustained severe burns from a flame, covering 40% of their body. Despite the severity of their injuries, no excision (ET = 0) or prophylactic antibiotics (AT = 0) were administered during their treatment. They were observed for 18 days, and their status indicates they were censored (status = 0). This means they did not develop an infection during the observation period. The combination of a severe burn and lack of intervention makes their outcome noteworthy, as it suggests potential resilience or unmeasured protective factors.
+
+- Observation 57: A female patient with a mild scald burn affecting only 5% of their body. They did not receive excision (ET = 0) or antibiotics (AT = 0) during the observation period. Over 18 days of observation, they were censored (status = 0), suggesting no infection occurred within the follow-up period. The small burn area and mild severity likely contributed to their favorable outcome without the need for intervention.
+
+- Observation 78: A female patient suffered a mild scald burn covering 6% of their body. Like the others, they were not treated with excision (ET = 0) or prophylactic antibiotics (AT = 0). They were observed for 13 days and were censored (status = 0), indicating no infection was recorded during this period. Their mild burn severity and limited burn area likely explain their censored outcome, though the shorter observation window leaves some uncertainty.
+
+- Observation 111: A male patient sustained very severe burns from a scald, affecting 70% of their body. Despite the extensive nature of their injuries, they did not receive excision (ET = 0) or antibiotics (AT = 0). They were observed for only 8 days and were censored (status = 0), meaning no infection occurred within the limited observation window. The short follow-up period, combined with the severity of their burns, raises questions about whether an infection may have developed later, had observation continued.
+
+- Observation 286: A male patient experienced a mild flame burn covering 10% of their body. Similar to the other cases, they were not treated with excision (ET = 0) or antibiotics (AT = 0). However, they were observed for only 2 days and experienced an infection (status = 1). This makes them the only individual in this dataset who developed the event of interest (infection) during the observation period.
+
+The identified outliers reveal significant variability in infection risk that is not fully explained by the model. For example, ID 111, with a very severe burn (70% body surface area) and no excision or antibiotic treatment, remained free of infection after 8 days, which is unexpected given the significant role of excision (HR = 0.345, p = 0.043) in reducing infection risk. Similarly, ID 286, with a mild burn (10% body surface area), developed an infection after only 2 days despite the model suggesting lower risk for mild burns. These cases suggest that unmeasured factors, such as immune responses, comorbidities, or environmental conditions, may play a significant role in determining outcomes. Additionally, censored individuals with moderate-to-severe burns (e.g., IDs 43 and 111) highlight the potential influence of factors beyond the model's scope, such as the quality of wound care or other interventions not captured in the dataset.
+
+**Clinical Implications:**
+
+These findings emphasize the need for a more nuanced approach to infection prevention and treatment. While timely excision is shown to significantly reduce infection risk, some patients, such as ID 111, may exhibit resilience factors that mitigate infection risks even in the absence of standard interventions. Conversely, cases like ID 286 highlight that even patients with mild burns may require close monitoring and early intervention to prevent infections. Clinically, these outliers suggest that individualized care plans, incorporating patient-specific risk factors beyond burn severity and treatment timing, are crucial for improving outcomes. Additionally, the findings highlight the importance of addressing racial disparities (Race: White, HR = 10.289, p = 0.024) in infection risk through equitable access to care and tailored interventions.
+
+## 8. Conclusions
+
+The stratified Cox proportional hazards model highlighted key factors influencing infection risk among burn patients. Time to excision (ET) was a significant protective factor, with shorter excision times associated with reduced infection risk (HR = 0.345, p = 0.043). Although antimicrobial cleansing showed a marginal reduction in infection hazard (HR = 0.584, p = 0.074), its effect was less pronounced compared to excision timing. Interestingly, race was a significant predictor, with White patients showing a higher hazard for infection (HR = 10.289, p = 0.024). However, the inclusion of burn site and percentage of body surface burned did not significantly impact infection risk in this model, suggesting that their role may be less direct or mediated by other factors. These findings point to the complexity of infection dynamics and underscore the need for individualized approaches in burn care.
+
+Timely surgical excision remains the most impactful intervention for reducing infection risk in burn patients, reinforcing its critical role in clinical practice. While antimicrobial cleansing may have potential benefits, further studies are required to confirm its efficacy across diverse patient populations. The lack of significant effects for burn site and burn percent suggests that these variables may influence infection risk indirectly, possibly through interactions with other factors such as excision timing or burn severity. Clinicians should remain vigilant in assessing all burn characteristics while prioritizing excision and infection control strategies. The significant racial disparity in infection hazard underscores the need for equitable access to timely interventions and tailored care to address potential gaps in outcomes.
+
+Future research should explore unmeasured variables, such as burn degree (first, second, or third degree), immune status, comorbidities, and environmental factors, that may contribute to infection risk. Including more granular data on burn site and percentage burned may help clarify their indirect or interactive effects on infection outcomes. Stratified analyses by demographic and burn-specific factors, or the use of interaction terms, could further illuminate these relationships. Additionally, randomized trials and more diverse datasets are necessary to address potential biases and validate findings across broader populations.
+
+While the dataset offers valuable insights, its composition introduces biases in the distributions of treatment, gender, race, and burn types. Future analyses could:
+
+- Investigate how these imbalances affect infection outcomes and treatment efficacy.
+- Incorporate stratification or interaction terms to account for variations in demographics and burn characteristics.
+- Acknowledge the dataset's limitations when generalizing findings, particularly regarding racial and gender disparities.
+
+The significant hazard ratio for White patients may reflect the predominance of White individuals in the dataset rather than true racial differences. This imbalance could amplify observed effects while under representing non-White populations. Similarly, the lack of significance for burn site and burn percent does not necessarily imply irrelevance but may reflect the limitations of the dataset or the need for more complex models to capture their effects. Findings should be interpreted cautiously and validated in more diverse and representative datasets.
+
+This analysis underscores the need for more inclusive data collection in burn research. Ensuring representation across racial, ethnic, and demographic groups is critical to producing findings that can be broadly generalized. Further, capturing detailed burn characteristics such as degree, site, and extent with more precision can provide deeper insights into their relationships with infection outcomes. By addressing these gaps, future research can better guide equitable and effective burn care practices.
+
+## Code Appendix
+```{r getlabels, echo = FALSE}
+labs = knitr::all_labels()
+labs = labs[!labs %in% c("setup","getlabels","allcode")]
+```
+
+```{r all code, ref.label = labs, eval = FALSE}
+```
